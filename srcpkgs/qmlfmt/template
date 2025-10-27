@@ -1,0 +1,18 @@
+pkgname=qmlfmt
+version=1.1.4
+revision=1
+hostmakedepends="unzip"
+short_desc="Formatter for Qt/QML code"
+maintainer="lysec <itslysec@gmail.com>"
+license="MIT"
+homepage="https://github.com/jesperhh/qmlfmt"
+distfiles="https://github.com/jesperhh/qmlfmt/releases/download/${version}/qmlfmt-linux.zip"
+checksum=3b570ed770575bf3dac58c2ec65b4d506f6fd4714521dfd27ba4c9ba410239f1
+
+do_install() {
+    ZIP="${XBPS_SRCDISTDIR}/${pkgname}-${version}/qmlfmt-linux.zip"
+
+    [ -f "$ZIP" ] || { echo "ERROR: $ZIP not found in distdir"; return 1; }
+    unzip -q -o "$ZIP" -d "${wrksrc}"
+    vbin "${wrksrc}/qmlfmt"
+}
