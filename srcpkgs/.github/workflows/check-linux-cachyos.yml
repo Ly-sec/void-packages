@@ -1,0 +1,273 @@
+name: Update CachyOS Kernel
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip test build'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-kernel-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests packaging
+
+      - name: Check for kernel updates
+        id: check
+        run: |
+          python3 << 'EOF'
+          import os
+          import re
+          import requests
+          import hashlib
+          from packaging import version
+
+          def get_latest_kernel_version():
+              try:
+                  url = 'https://www.kernel.org/releases.json'
+                  resp = requests.get(url, timeout=10)
+                  if resp.status_code == 200:
+                      data = resp.json()
+                      for release in data['releases']:
+                          if release['moniker'] == 'stable':
+                              return release['version']
+              except Exception as e:
+                  print(f"Error fetching kernel version: {e}")
+              return None
+
+          def download_and_hash(url):
+              try:
+                  print(f"Downloading: {url}")
+                  resp = requests.get(url, timeout=120, stream=True)
+                  if resp.status_code == 200:
+                      hasher = hashlib.sha256()
+                      for chunk in resp.iter_content(chunk_size=8192):
+                          hasher.update(chunk)
+                      return hasher.hexdigest()
+                  else:
+                      print(f"HTTP {resp.status_code} for {url}")
+              except Exception as e:
+                  print(f"Error downloading {url}: {e}")
+              return None
+
+          def check_cachyos_patches_exist(kernel_version):
+              major_minor = '.'.join(kernel_version.split('.')[:2])
+              urls = [
+                  f'https://github.com/CachyOS/kernel-patches/raw/master/{major_minor}/all/0001-cachyos-base-all.patch',
+                  f'https://github.com/CachyOS/kernel-patches/raw/master/{major_minor}/sched/0001-bore-cachy.patch'
+              ]
+              for url in urls:
+                  try:
+                      resp = requests.head(url, timeout=10)
+                      if resp.status_code != 200:
+                          print(f"Patch not found: {url}")
+                          return False
+                  except Exception as e:
+                      print(f"Error checking {url}: {e}")
+                      return False
+              return True
+
+          template_path = 'srcpkgs/linux-cachyos/template'
+
+          if not os.path.exists(template_path):
+              print(f"❌ Template file not found: {template_path}")
+              os.system("ls -R .")
+              exit(1)
+
+          with open(template_path, 'r', encoding='utf-8', errors='replace') as f:
+              content = f.read()
+
+          print("🔍 Template preview (first 10 lines):")
+          print("\n".join(content.splitlines()[:10]))
+
+          ver_match = re.search(r'version\s*=\s*"?([0-9.]+)"?', content)
+          if not ver_match:
+              print("❌ Could not find version in template — check for spaces, quotes, or comments")
+              exit(1)
+
+          current_version = ver_match.group(1)
+          print(f"✅ Current kernel version found: {current_version}")
+
+          latest_version = get_latest_kernel_version()
+          if not latest_version:
+              print("Could not fetch latest kernel version")
+              exit(1)
+          
+          print(f"🌐 Latest kernel version: {latest_version}")
+
+          current = version.parse(current_version)
+          latest = version.parse(latest_version)
+
+          if latest <= current:
+              print("Kernel is up to date")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("update_needed=false\n")
+              exit(0)
+
+          if not check_cachyos_patches_exist(latest_version):
+              print(f"CachyOS patches not yet available for {latest_version}")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("update_needed=false\n")
+              exit(0)
+
+          print(f"🚀 Update available: {current_version} → {latest_version}")
+
+          major_minor = '.'.join(latest_version.split('.')[:2])
+          major = latest_version.split('.')[0]
+          
+          urls = [
+              f'https://cdn.kernel.org/pub/linux/kernel/v{major}.x/linux-{latest_version}.tar.xz',
+              'https://raw.githubusercontent.com/CachyOS/linux-cachyos/master/linux-cachyos/config',
+              f'https://github.com/CachyOS/kernel-patches/raw/master/{major_minor}/all/0001-cachyos-base-all.patch',
+              f'https://github.com/CachyOS/kernel-patches/raw/master/{major_minor}/sched/0001-bore-cachy.patch'
+          ]
+
+          checksums = []
+          for url in urls:
+              checksum = download_and_hash(url)
+              if not checksum:
+                  print(f"Failed to download {url}")
+                  exit(1)
+              checksums.append(checksum)
+              print(f"  {checksum}")
+
+          new_content = content
+          new_content = re.sub(r'version\s*=\s*"?[0-9.]+"?', f'version={latest_version}', new_content)
+          new_content = re.sub(r'revision=\d+', 'revision=1', new_content)
+
+          old_major_minor = '.'.join(current_version.split('.')[:2])
+          new_content = new_content.replace(f'/v{current_version.split(".")[0]}.x/', f'/v{major}.x/')
+          new_content = new_content.replace(f'/{old_major_minor}/', f'/{major_minor}/')
+
+          checksum_str = '\n  '.join(checksums)
+          new_content = re.sub(
+              r'checksum="[^"]*(?:\n[^"]*)*"',
+              f'checksum="\n  {checksum_str}\n"',
+              new_content,
+              flags=re.MULTILINE
+          )
+
+          with open(template_path, 'w') as f:
+              f.write(new_content)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write("update_needed=true\n")
+              f.write(f"old_version={current_version}\n")
+              f.write(f"new_version={latest_version}\n")
+
+          print("✅ Template updated successfully")
+          EOF
+
+      - name: Setup void-packages for build test
+        if: steps.check.outputs.update_needed == 'true' && inputs.skip_build != 'true'
+        run: |
+          git clone --depth=1 https://github.com/void-linux/void-packages.git /tmp/void-packages
+          mkdir -p /tmp/void-packages/srcpkgs/linux-cachyos
+          cp srcpkgs/linux-cachyos/template /tmp/void-packages/srcpkgs/linux-cachyos/
+
+      - name: Install void-packages dependencies
+        if: steps.check.outputs.update_needed == 'true' && inputs.skip_build != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git libssl-dev libelf-dev bc flex bison rsync kmod xz-utils zstd
+
+      - name: Test build kernel (configure + partial compile)
+        if: steps.check.outputs.update_needed == 'true' && inputs.skip_build != 'true'
+        id: test_build
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          cd /tmp/void-packages
+          ./xbps-src binary-bootstrap || true
+          ./xbps-src -f pkg linux-cachyos 2>&1 | tee build.log || {
+            echo "Build test failed, checking logs..."
+            tail -100 build.log
+            exit 1
+          }
+          echo "Build test passed (patches applied, config valid)"
+
+      - name: Build result
+        if: steps.check.outputs.update_needed == 'true' && inputs.skip_build != 'true'
+        run: |
+          if [ "${{ steps.test_build.outcome }}" == "success" ]; then
+            echo "build_status=Build test passed" >> $GITHUB_ENV
+          else
+            echo "build_status=Build test failed - check logs" >> $GITHUB_ENV
+          fi
+
+      - name: Create Pull Request
+        if: steps.check.outputs.update_needed == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'linux-cachyos: update to ${{ steps.check.outputs.new_version }}'
+          branch: auto-update/linux-cachyos
+          delete-branch: true
+          title: 'linux-cachyos: update to ${{ steps.check.outputs.new_version }}'
+          body: |
+            ## Automated Kernel Update
+
+            - **Current Version:** ${{ steps.check.outputs.old_version }}
+            - **New Version:** ${{ steps.check.outputs.new_version }}
+            - **Kernel.org Release:** https://kernel.org/
+
+            ### Build Test Status
+            ${{ env.build_status || 'Build test skipped' }}
+
+            ### Changes
+            - Updated kernel version to ${{ steps.check.outputs.new_version }}
+            - Updated all distfile checksums
+            - Updated CachyOS patch URLs for new kernel version
+            - Reset revision to 1
+
+            ### Testing Required
+            1. Build the package: `xbps-src pkg linux-cachyos`
+            2. Install and boot test
+            3. Verify all CachyOS patches apply correctly
+            4. Check that modules load properly
+
+            ### Package Location
+            After merging, build manually:
+            ```bash
+            cd void-packages
+            ./xbps-src pkg linux-cachyos
+            # Package will be in hostdir/binpkgs/
+            ```
+
+            This PR was automatically generated by the kernel update workflow.
+          labels: |
+            automated
+            kernel
+            needs-testing
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.update_needed }}" == "true" ]; then
+            echo "Created PR for kernel update: ${{ steps.check.outputs.old_version }} -> ${{ steps.check.outputs.new_version }}"
+            if [ "${{ inputs.skip_build }}" != "true" ]; then
+              echo "Build test: ${{ env.build_status }}"
+            fi
+          else
+            echo "Kernel is up to date or patches not available yet"
+          fi

@@ -1,0 +1,209 @@
+name: Check for Package Updates
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # Daily at 8 AM German time (7 AM UTC in summer, 6 AM UTC in winter)
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests packaging
+
+      - name: Check for updates and create PR branches
+        id: check
+        run: |
+          python3 << 'EOF'
+          import os
+          import re
+          import requests
+          import subprocess
+          from packaging import version
+
+          def extract_info_from_template(filepath):
+              with open(filepath, 'r') as f:
+                  content = f.read()
+              pkg_match = re.search(r'pkgname=(\S+)', content)
+              ver_match = re.search(r'version=(\S+)', content)
+              rev_match = re.search(r'revision=(\d+)', content)
+              if not pkg_match or not ver_match:
+                  return None
+              github_match = re.search(r'https://github\.com/([^/]+)/([^/\s"]+)', content)
+              return {
+                  'name': pkg_match.group(1),
+                  'version': ver_match.group(1),
+                  'revision': rev_match.group(1) if rev_match else '1',
+                  'github': github_match.groups() if github_match else None,
+                  'file': filepath,
+                  'content': content
+              }
+
+          def get_latest_github_release(owner, repo):
+              try:
+                  url = f'https://api.github.com/repos/{owner}/{repo}/releases/latest'
+                  headers = {'Accept': 'application/vnd.github.v3+json'}
+                  token = os.environ.get('GITHUB_TOKEN')
+                  if token:
+                      headers['Authorization'] = f'token {token}'
+                  resp = requests.get(url, headers=headers, timeout=10)
+                  if resp.status_code == 200:
+                      data = resp.json()
+                      tag = data['tag_name'].lstrip('v')
+                      return tag, data['html_url']
+              except Exception as e:
+                  print(f"Error fetching {owner}/{repo}: {e}")
+              return None, None
+
+          def update_template(info, new_version):
+              content = info['content']
+              content = re.sub(r'version=\S+', f'version={new_version}', content)
+              content = re.sub(r'revision=\d+', 'revision=1', content)
+              with open(info['file'], 'w') as f:
+                  f.write(content)
+              # Update checksum
+              distfiles_match = re.search(r'distfiles="([^"]+)"', content)
+              if distfiles_match:
+                  url_template = distfiles_match.group(1)
+                  download_url = url_template.replace('${version}', new_version)
+                  resp = requests.get(download_url, timeout=30)
+                  if resp.status_code == 200:
+                      import hashlib
+                      checksum = hashlib.sha256(resp.content).hexdigest()
+                      content = re.sub(r'checksum=\S+', f'checksum={checksum}', content)
+                      with open(info['file'], 'w') as f:
+                          f.write(content)
+              return True
+
+          def create_pr_branch(pkg_name):
+              branch_name = f'auto-update/{pkg_name}'
+              subprocess.run(['git', 'branch', '-D', branch_name], check=False, capture_output=True)
+              subprocess.run(['git', 'push', 'origin', '--delete', branch_name], check=False, capture_output=True)
+              subprocess.run(['git', 'checkout', '-b', branch_name], check=True)
+              return branch_name
+
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], check=True)
+
+          templates = [os.path.join('srcpkgs', d, 'template') for d in os.listdir('srcpkgs') if os.path.isfile(os.path.join('srcpkgs', d, 'template'))]
+          print(f"Found {len(templates)} templates to check")
+
+          updates = []
+
+          for template_path in templates:
+              info = extract_info_from_template(template_path)
+              if not info or not info['github']:
+                  continue
+              owner, repo = info['github']
+              latest_ver, release_url = get_latest_github_release(owner, repo)
+              if not latest_ver:
+                  continue
+              current = version.parse(info['version'])
+              latest = version.parse(latest_ver)
+              if latest <= current:
+                  continue
+
+              print(f"Updating {info['name']} {info['version']} -> {latest_ver}")
+              branch_name = create_pr_branch(info['name'])
+              update_template(info, latest_ver)
+              subprocess.run(['git', 'add', info['file']], check=True)
+              subprocess.run(['git', 'commit', '-m', f'{info["name"]}: update to {latest_ver}'], check=True)
+              subprocess.run(['git', 'push', '-f', 'origin', branch_name], check=True)
+
+              updates.append({
+                  'package': info['name'],
+                  'old_version': info['version'],
+                  'new_version': latest_ver,
+                  'branch': branch_name,
+                  'release_url': release_url
+              })
+
+          with open('pr_summary.txt', 'w') as f:
+              for u in updates:
+                  f.write(f"{u['package']}|{u['old_version']}|{u['new_version']}|{u['branch']}|{u['release_url']}\n")
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"updates_found={'true' if updates else 'false'}\n")
+              f.write(f"update_count={len(updates)}\n")
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Requests
+        if: steps.check.outputs.updates_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            if (!fs.existsSync('pr_summary.txt')) {
+              console.log('No PR summary found');
+              return;
+            }
+
+            const summary = fs.readFileSync('pr_summary.txt', 'utf8');
+            const updates = summary.trim().split('\n').map(line => {
+              const [pkg, oldVer, newVer, branch, releaseUrl] = line.split('|');
+              return { pkg, oldVer, newVer, branch, releaseUrl };
+            });
+
+            for (const update of updates) {
+              const title = `${update.pkg}: update to ${update.newVer}`;
+              let body = `## Automated Package Update\n\n`;
+              body += `- **Current Version:** ${update.oldVer}\n`;
+              body += `- **New Version:** ${update.newVer}\n`;
+              body += `- **Release:** ${update.releaseUrl}\n\n`;
+              body += `This PR was automatically generated by the package update workflow.\n`;
+
+              const { data: pulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${context.repo.owner}:${update.branch}`
+              });
+
+              if (pulls.length > 0) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pulls[0].number,
+                  title: title,
+                  body: body
+                });
+                console.log(`Updated existing PR #${pulls[0].number} for ${update.pkg}`);
+              } else {
+                await github.rest.pulls.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: title,
+                  body: body,
+                  head: update.branch,
+                  base: 'main'
+                });
+                console.log(`Created new PR for ${update.pkg}`);
+              }
+            }
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.updates_found }}" == "true" ]; then
+            echo "Created/updated PRs for ${{ steps.check.outputs.update_count }} package(s)."
+          else
+            echo "All packages are up to date!"
+          fi
