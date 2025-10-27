@@ -2,6 +2,7 @@ pkgname=qmlfmt
 version=1.1.4
 revision=1
 hostmakedepends="unzip"
+depends="qt6-qt5compat"
 short_desc="Formatter for Qt/QML code"
 maintainer="lysec <itslysec@gmail.com>"
 license="MIT"
