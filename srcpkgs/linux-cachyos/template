@@ -1,5 +1,5 @@
 pkgname=linux-cachyos
-version=6.17.5
+version=6.17.6
 revision=1
 wrksrc="linux-${version}"
 build_style=gnu-makefile
@@ -22,36 +22,27 @@ e917c7598dc25f1630e01797499cadc735388c667d451687a673e8581e589262
 5b4eaf36b22c383bdbed2887f8bc7047b9e66c3bb3477b24323bdafe88236310
 "
 skip_extraction="cachyos.config 0001-cachyos-base-all.patch 0001-bore-cachy.patch"
-
 do_configure() {
     patch -Np1 < ${XBPS_SRCDISTDIR}/${pkgname%-headers}-${version}/0001-cachyos-base-all.patch
     patch -Np1 < ${XBPS_SRCDISTDIR}/${pkgname%-headers}-${version}/0001-bore-cachy.patch
     cp ${XBPS_SRCDISTDIR}/${pkgname%-headers}-${version}/cachyos.config .config
-    
     # Set EXTRAVERSION to -cachyos
     vsed -i -e 's/^EXTRAVERSION =.*/EXTRAVERSION = -cachyos/' Makefile
-    
     make ARCH=x86_64 olddefconfig
 }
-
 do_build() {
     make ARCH=x86_64 ${makejobs} all
 }
-
 do_install() {
     local kernver=$(make -s kernelrelease)
-    
     # Install kernel and modules
     make ARCH=x86_64 INSTALL_MOD_PATH=${DESTDIR}/usr modules_install
-    
     # Install kernel image - use kernver everywhere!
     install -Dm644 arch/x86/boot/bzImage ${DESTDIR}/boot/vmlinuz-${kernver}
     install -Dm644 System.map ${DESTDIR}/boot/System.map-${kernver}
     install -Dm644 .config ${DESTDIR}/boot/config-${kernver}
-    
     # Remove firmware
     rm -rf ${DESTDIR}/usr/lib/firmware
-    
     # Remove build/source links
     rm -f ${DESTDIR}/usr/lib/modules/${kernver}/build
     rm -f ${DESTDIR}/usr/lib/modules/${kernver}/source
