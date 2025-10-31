@@ -1,0 +1,37 @@
+#!/bin/sh
+TEMPLATE="template"
+GITURL="https://github.com/YaLTeR/niri.git"
+
+# Fetch latest commit hash on main
+LATEST_COMMIT=$(git ls-remote "$GITURL" main | awk '{print $1}')
+if [ -z "$LATEST_COMMIT" ]; then
+    echo "Failed to fetch latest commit."
+    exit 1
+fi
+
+# Get short hash (7 characters - git standard)
+SHORT_HASH=$(echo "$LATEST_COMMIT" | cut -c1-7)
+
+# Get latest tag
+LATEST_TAG=$(git ls-remote --tags --refs "$GITURL" | awk -F'/' '{print $3}' | grep -v '\^' | sort -V | tail -n1)
+
+# Build version string
+if [ -n "$LATEST_TAG" ]; then
+    # Remove 'v' prefix if present
+    TAG_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+    VERSION="${TAG_VERSION}.git.${SHORT_HASH}"
+else
+    VERSION="0.0.git.${SHORT_HASH}"
+fi
+
+# Update _gitrev in the template (full hash)
+sed -i "s|_gitrev=.*|_gitrev=\"$LATEST_COMMIT\"|" "$TEMPLATE"
+
+# Update version string (short hash)
+sed -i "s|^version=.*|version=$VERSION|" "$TEMPLATE"
+
+# Reset revision to 1 since we're updating the version
+sed -i "s|^revision=.*|revision=1|" "$TEMPLATE"
+
+echo "Updated template to commit $SHORT_HASH (full: $LATEST_COMMIT)"
+echo "Version: $VERSION"

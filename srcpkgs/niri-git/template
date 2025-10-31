@@ -1,0 +1,71 @@
+# Template file for 'niri' (Git pinned commit)
+pkgname=niri-git
+version=25.08.git.e257687
+revision=1
+build_style=cargo
+build_helper="qemu"
+hostmakedepends="pkg-config clang19-devel git"
+makedepends="eudev-libudev-devel libxkbcommon-devel libinput-devel libgbm-devel \
+ libdisplay-info-devel pipewire-devel pango-devel libseat-devel clang19-devel \
+ gdk-pixbuf-devel graphene-devel gtk4-devel libadwaita-devel"
+depends="wayland"
+conflicts="niri>=0"
+checkdepends="wayland"
+short_desc="Scrollable-tiling Wayland compositor (git, pinned commit)"
+maintainer="Ly-sec <itslysec@gmail.com>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/YaLTeR/niri"
+changelog="https://github.com/YaLTeR/niri/releases"
+skip_hash=yes
+nocross=yes
+
+# Git info
+_giturl="https://github.com/YaLTeR/niri.git"
+_gitrev="e2576879216a39e5c45b9d2906531bc2065e724c"
+wrksrc="niri"
+
+# Fetch pinned commit from Git
+do_fetch() {
+    rm -rf "$wrksrc"
+    git clone --depth=1 --branch=main "${_giturl}" "${wrksrc}"
+    cd "${wrksrc}"
+    git checkout "${_gitrev}"
+}
+
+# Build from local Git repo
+do_build() {
+    cd "$wrksrc"
+    cargo build --release --locked --target "${RUST_TARGET}" ${configure_args}
+}
+
+# Run tests (skip musl)
+do_check() {
+    if [ "$XBPS_TARGET_LIBC" != "musl" ]; then
+        cd "$wrksrc"
+        cargo test --target ${RUST_TARGET} --workspace --locked -- --skip=::egl
+    fi
+}
+
+# Install from local Git repo, overwrite existing binaries
+do_install() {
+    cd "$wrksrc"
+    cargo install --path . --locked --root="${DESTDIR}/usr" --force
+}
+
+# Pre-check: runtime dir and file limits
+pre_check() {
+    export XDG_RUNTIME_DIR=$(mktemp -d "$wrksrc/runtime.XXXXXX")
+    ulimit -n 4096
+}
+
+# Post-install: completions and resources
+post_install() {
+    local sh
+    vinstall resources/niri.desktop 644 usr/share/wayland-sessions
+    vinstall resources/niri-portals.conf 644 usr/share/xdg-desktop-portal
+
+    for sh in bash fish zsh; do
+        vtargetrun "${DESTDIR}/usr/bin/niri" completions "${sh}" > "niri.${sh}"
+        vcompletion "niri.${sh}" "${sh}"
+    done
+}
