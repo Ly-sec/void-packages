@@ -1,0 +1,43 @@
+#!/bin/sh
+TEMPLATE="template"
+GITHUB_REPO="noctalia-dev/noctalia-shell"
+
+printf "Checking latest release for %s...\n" "$GITHUB_REPO"
+
+# Fetch latest release tag
+LATEST_TAG=$(curl -sS "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
+             grep '"tag_name":' | \
+             head -n1 | \
+             sed -E 's/.*"tag_name": *"(v?[0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+
+if [ -z "$LATEST_TAG" ]; then
+    printf "Error: Failed to fetch latest release tag.\n" >&2
+    exit 1
+fi
+
+VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+printf "Latest version: %s\n" "$VERSION"
+
+# Download tarball quietly
+TARBALL_URL="https://github.com/${GITHUB_REPO}/archive/refs/tags/v${VERSION}.tar.gz"
+printf "Downloading tarball...\n"
+TARBALL_TMP=$(mktemp)
+curl -sSL "$TARBALL_URL" -o "$TARBALL_TMP" || {
+    printf "Error: Download failed\n" >&2
+    exit 1
+}
+
+# Compute SHA256
+printf "Calculating SHA256 checksum...\n"
+CHECKSUM=$(sha256sum "$TARBALL_TMP" | awk '{print $1}')
+rm -f "$TARBALL_TMP"
+
+# Update template
+sed -i "s|^version=.*|version=$VERSION|" "$TEMPLATE"
+sed -i "s|^checksum=.*|checksum=$CHECKSUM|" "$TEMPLATE"
+
+# Final summary
+printf "\nTemplate updated successfully:\n"
+printf "  Template: %s\n" "$TEMPLATE"
+printf "  Version : %s\n" "$VERSION"
+printf "  Checksum: %s\n\n" "$CHECKSUM"
