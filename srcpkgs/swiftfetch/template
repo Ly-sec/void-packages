@@ -1,0 +1,17 @@
+# Template file for 'swiftfetch'
+pkgname=swiftfetch
+version=1.2.1
+revision=1
+build_style=cargo
+hostmakedepends="cargo"
+short_desc="Fast and efficient fetch utility written in Rust"
+maintainer="Lysec <itslysec@gmail.com>"
+license="MIT"
+homepage="https://github.com/Ly-sec/swiftfetch"
+distfiles="https://github.com/Ly-sec/swiftfetch/archive/refs/tags/v${version}.tar.gz"
+checksum=47988a9dfbc41ffd7d86532e9ae0eecb7112793859ec5a9582add1e52d7a745d
+
+post_install() {
+	vlicense LICENSE
+	vinstall config/config.toml 644 usr/share/${pkgname}
+}

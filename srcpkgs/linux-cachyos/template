@@ -1,5 +1,5 @@
 pkgname=linux-cachyos
-version=6.17.6
+version=6.17.7
 revision=1
 wrksrc="linux-${version}"
 build_style=gnu-makefile
@@ -16,12 +16,13 @@ distfiles="
   https://github.com/CachyOS/kernel-patches/raw/master/6.17/sched/0001-bore-cachy.patch
 "
 checksum="
-c05faf36e9c2164be723cf6ada8533788804d48f9dd2fe1be2ccee3616a92bce
-e917c7598dc25f1630e01797499cadc735388c667d451687a673e8581e589262
-6d2d78f8315dbcdc71e40720d3ab8bb3cb8030a3f391f628569c26b363c0fa05
+ddf2ea0d4439e1d57136be3623102af9458f601f5b1cb77e83246e88aea09d0e
+ededed3d870c1660bec6b42ba31f9f2e7b117707a2492473fefc99726e595130
+f8d705562484af7581dbf1a1c5768474ab95f53747bd79cee5cbd72d9eea5d1b
 5b4eaf36b22c383bdbed2887f8bc7047b9e66c3bb3477b24323bdafe88236310
 "
 skip_extraction="cachyos.config 0001-cachyos-base-all.patch 0001-bore-cachy.patch"
+
 do_configure() {
     patch -Np1 < ${XBPS_SRCDISTDIR}/${pkgname%-headers}-${version}/0001-cachyos-base-all.patch
     patch -Np1 < ${XBPS_SRCDISTDIR}/${pkgname%-headers}-${version}/0001-bore-cachy.patch
@@ -30,9 +31,11 @@ do_configure() {
     vsed -i -e 's/^EXTRAVERSION =.*/EXTRAVERSION = -cachyos/' Makefile
     make ARCH=x86_64 olddefconfig
 }
+
 do_build() {
     make ARCH=x86_64 ${makejobs} all
 }
+
 do_install() {
     local kernver=$(make -s kernelrelease)
     # Install kernel and modules

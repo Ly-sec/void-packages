@@ -1,19 +1,39 @@
+# Template file for 'qmlfmt'
 pkgname=qmlfmt
-version=1.1.4
+version=1.1.4.git.2896d71
 revision=1
-hostmakedepends="unzip"
+build_style=cmake
+hostmakedepends="git cmake unzip qt6-qttools"
+makedepends="qt6-qtbase-devel qt6-qt5compat-devel"
 depends="qt6-qt5compat"
-short_desc="Formatter for Qt/QML code"
+short_desc="Formatter for Qt/QML code (git, pinned commit)"
 maintainer="lysec <itslysec@gmail.com>"
 license="MIT"
 homepage="https://github.com/jesperhh/qmlfmt"
-distfiles="https://github.com/jesperhh/qmlfmt/releases/download/${version}/qmlfmt-linux.zip"
-checksum=3b570ed770575bf3dac58c2ec65b4d506f6fd4714521dfd27ba4c9ba410239f1
+changelog="https://github.com/jesperhh/qmlfmt/releases"
+skip_hash=yes
 
-do_install() {
-    ZIP="${XBPS_SRCDISTDIR}/${pkgname}-${version}/qmlfmt-linux.zip"
+_giturl="https://github.com/jesperhh/qmlfmt.git"
+_gitrev="2896d71a14d0232d43816f7e99482f5bf0385dab"
 
-    [ -f "$ZIP" ] || { echo "ERROR: $ZIP not found in distdir"; return 1; }
-    unzip -q -o "$ZIP" -d "${wrksrc}"
-    vbin "${wrksrc}/qmlfmt"
+do_fetch() {
+    rm -rf "${wrksrc}"
+    git clone --depth=1 "${_giturl}" "${wrksrc}"
+    cd "${wrksrc}"
+    git fetch --depth=1 origin "${_gitrev}"
+    git checkout "${_gitrev}"
 }
+
+pre_configure() {
+    # Create dummy QtCreatorIDEBranding.cmake to satisfy CMake
+    mkdir -p "${wrksrc}/qt-creator/cmake"
+    cat > "${wrksrc}/qt-creator/cmake/QtCreatorIDEBranding.cmake" << EOF
+# Dummy file for qmlfmt build
+set(QTC_IDE_BRANDING "")
+EOF
+}
+
+configure_args="
+    -DCMAKE_PREFIX_PATH=/usr/lib/qt6
+    -DQt6_DIR=/usr/lib/qt6/cmake/Qt6
+"

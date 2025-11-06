@@ -1,0 +1,81 @@
+# Template file for 'spicetify-cli'
+pkgname=spicetify-cli
+version=2.42.0
+revision=1
+build_style=go
+go_import_path="github.com/spicetify/cli"
+go_package="${go_import_path}"
+go_build_tags=""
+go_ldflags="-X 'main.version=${version}'"
+short_desc="Command-line tool to customize Spotify client"
+maintainer="Ly-sec <itslysec@gmail.com>"
+license="LGPL-2.1-only"
+homepage="https://github.com/spicetify/cli"
+distfiles="https://github.com/spicetify/cli/archive/v${version}.tar.gz"
+checksum=ff5a3f5146a3e316178487154efe0bdc7ef5abbd95274d3fc59ec21d03df4fc4
+
+
+post_build() {
+	# Rename the binary from 'cli' to 'spicetify'
+	mv ${GOPATH}/bin/cli ${GOPATH}/bin/spicetify 2>/dev/null || true
+}
+
+do_check() {
+	local spicetify_bin="${GOPATH}/bin/spicetify"
+	if [ ! -f "${spicetify_bin}" ]; then
+		msg_error "spicetify binary not found\n"
+		return 1
+	fi
+	local spicetify_version=$(${spicetify_bin} -v)
+	if [ "v${spicetify_version}" != "v${version}" ]; then
+		msg_error "Version mismatch: expected v${version}, got v${spicetify_version}\n"
+		return 1
+	fi
+}
+
+do_install() {
+	# Create /opt directory structure first
+	vmkdir opt/${pkgname}
+	
+	# Install binary
+	vinstall ${GOPATH}/bin/spicetify 755 opt/${pkgname}
+	
+	# Install assets
+	vcopy CustomApps opt/${pkgname}
+	vcopy Extensions opt/${pkgname}
+	vcopy jsHelper opt/${pkgname}
+	vcopy Themes opt/${pkgname}
+	vinstall css-map.json 644 opt/${pkgname}
+	vinstall globals.d.ts 644 opt/${pkgname}
+	
+	# Create wrapper script in /usr/bin
+	vmkdir usr/bin
+	cat > "${DESTDIR}/usr/bin/spicetify" <<-EOF
+	#!/bin/sh
+	exec /opt/${pkgname}/spicetify "\$@"
+	EOF
+	chmod 755 "${DESTDIR}/usr/bin/spicetify"
+	
+	# Install post-install message
+	vlicense LICENSE
+	vdoc README.md
+}
+
+post_install() {
+	cat <<-EOF
+	*******************************************************************
+	To use spicetify-cli, you need to give your user write permissions
+	to Spotify's installation directory:
+	
+	  sudo chmod a+wr /usr/libexec/spotify
+	  sudo chmod a+wr /usr/libexec/spotify/Apps -R
+	
+	Then run as your regular user:
+	
+	  spicetify backup apply
+	
+	For more information, visit:
+	  https://spicetify.app/docs/advanced-usage/installation#spotify-installed-from-aur
+	*******************************************************************
+	EOF
+}
