@@ -1,5 +1,5 @@
 pkgname=noctalia-shell
-version=3.0.2
+version=3.0.6
 revision=1
 hostmakedepends=""
 maintainer="Ly-sec <itslysec@gmail.com>"
@@ -7,15 +7,26 @@ depends="quickshell qt6-plugin-tls-openssl power-profiles-daemon font-inter brig
 short_desc="A sleek and minimal desktop shell thoughtfully crafted for Wayland, built with Quickshell."
 homepage="https://github.com/noctalia-dev/noctalia-shell"
 license="MIT"
-
 distfiles="https://github.com/noctalia-dev/noctalia-shell/archive/refs/tags/v${version}.tar.gz"
-checksum=bf3b54fb71d7a03fad4b47bef76729ba1c02f6f154c26d5ec1013d1ec2252821
+checksum=f94eaebb2c08a8ab4cbf2f7d62c52ad2171a1e8bc1c1cca6938454e98efccce4
 
 build() {
     return 0
 }
 
 do_install() {
+    # Install shell files
     mkdir -p "${DESTDIR}/etc/xdg/quickshell/noctalia-shell"
     cp -r "${wrksrc}/." "${DESTDIR}/etc/xdg/quickshell/noctalia-shell/"
+    
+    # Install runit user service
+    vmkdir usr/share/noctalia-shell/sv
+    cat > "${DESTDIR}/usr/share/noctalia-shell/sv/run" <<-EOF
+	#!/bin/sh
+	exec qs -c noctalia-shell
+	EOF
+    chmod +x "${DESTDIR}/usr/share/noctalia-shell/sv/run"
+    
+    # Install message
+    vlicense LICENSE
 }
