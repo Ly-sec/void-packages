@@ -1,5 +1,5 @@
 pkgname=noctalia-shell
-version=3.0.6
+version=3.1.1
 revision=1
 hostmakedepends=""
 maintainer="Ly-sec <itslysec@gmail.com>"
@@ -8,7 +8,7 @@ short_desc="A sleek and minimal desktop shell thoughtfully crafted for Wayland, 
 homepage="https://github.com/noctalia-dev/noctalia-shell"
 license="MIT"
 distfiles="https://github.com/noctalia-dev/noctalia-shell/archive/refs/tags/v${version}.tar.gz"
-checksum=f94eaebb2c08a8ab4cbf2f7d62c52ad2171a1e8bc1c1cca6938454e98efccce4
+checksum=cb765a20718c4ab39aba57446561683cff64976138a47311db45a10fb292968f
 
 build() {
     return 0
