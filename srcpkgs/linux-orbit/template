@@ -1,0 +1,84 @@
+# Template file for 'linux-orbit'
+pkgname=linux-orbit
+version=6.17.7
+revision=1
+wrksrc="linux-${version}"
+build_style=gnu-makefile
+hostmakedepends="bc perl flex bison tar kmod rsync"
+makedepends="elfutils-devel pahole python3 rust rust-bindgen rust-src xz zstd openssl-devel clang lld llvm"
+short_desc="Custom Linux kernel with experimental latency tweaks"
+maintainer="Ly-sec <itslysec@gmail.com>"
+license="GPL-2.0-or-later"
+homepage="https://github.com/ly-sec"
+distfiles="
+  https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${version}.tar.xz
+"
+checksum="ddf2ea0d4439e1d57136be3623102af9458f601f5b1cb77e83246e88aea09d0e"
+skip_extraction=""
+
+patches="
+  tune_sched_scaling.patch
+  tune_sched_base_slice.patch
+  enable_sched_features.patch
+  tune_rt_runtime.patch
+"
+
+do_configure() {
+    local arch=x86_64
+    local base=${FILESDIR}/config
+    local fragment=${FILESDIR}/config.fragment
+    if [ -f "${base}" ]; then
+        msg_normal "Using base config from FILESDIR\n"
+        cp -f "${base}" .config
+    else
+        make ARCH=${arch} LLVM=1 LLVM_IAS=1 defconfig
+    fi
+    if [ -f "${fragment}" ]; then
+        KCONFIG_CONFIG=.config \
+        ARCH=${arch} LLVM=1 LLVM_IAS=1 \
+        scripts/kconfig/merge_config.sh -m .config "${fragment}"
+    fi
+    
+    make ARCH=${arch} LLVM=1 LLVM_IAS=1 olddefconfig
+}
+
+do_build() {
+    local -a makeargs=(ARCH=x86_64 LLVM=1 LLVM_IAS=1 ${makejobs})
+
+    if [ -n "${AFDO_PROFILE}" ]; then
+        makeargs+=(
+            KCFLAGS+=-fprofile-sample-use=${AFDO_PROFILE}
+            KCFLAGS+=-fprofile-sample-accurate
+            KBUILD_LDFLAGS+=-Wl,--lto-sample-profile=${AFDO_PROFILE}
+        )
+    fi
+
+    if [ -n "${PROPELLER_CFG}" ]; then
+        makeargs+=(
+            KBUILD_LDFLAGS+=-Wl,--lto-basic-block-sections=${PROPELLER_CFG}
+            KBUILD_LDFLAGS+=-Wl,--lto-basic-block-sections-size=4
+        )
+    fi
+
+    if [ -n "${PROPELLER_PROFILE}" ]; then
+        makeargs+=(KBUILD_LDFLAGS+=-Wl,--propeller-profile=${PROPELLER_PROFILE})
+    fi
+
+    make "${makeargs[@]}" all
+}
+
+do_install() {
+    local kernver=$(make -s ARCH=x86_64 LLVM=1 LLVM_IAS=1 kernelrelease)
+    
+    # Install kernel and modules (same pattern as CachyOS)
+    make ARCH=x86_64 LLVM=1 LLVM_IAS=1 INSTALL_MOD_PATH=${DESTDIR}/usr modules_install
+    
+    # Install kernel image - use kernver everywhere!
+    install -Dm644 arch/x86/boot/bzImage ${DESTDIR}/boot/vmlinuz-${kernver}
+    install -Dm644 System.map ${DESTDIR}/boot/System.map-${kernver}
+    install -Dm644 .config ${DESTDIR}/boot/config-${kernver}
+    
+    # Remove build/source links
+    rm -f ${DESTDIR}/usr/lib/modules/${kernver}/build
+    rm -f ${DESTDIR}/usr/lib/modules/${kernver}/source
+}

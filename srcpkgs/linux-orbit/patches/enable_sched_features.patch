@@ -1,0 +1,19 @@
+--- a/kernel/sched/features.h
++++ b/kernel/sched/features.h
+@@ -29,7 +29,7 @@
+  * wakeup-preemption), since its likely going to consume data we
+  * touched, increases cache locality.
+  */
+-SCHED_FEAT(NEXT_BUDDY, false)
++SCHED_FEAT(NEXT_BUDDY, true)
+ 
+ /*
+  * Allow completely ignoring cfs_rq->next; which can be set from various
+@@ -63,7 +63,7 @@
+  */
+ SCHED_FEAT(WAKEUP_PREEMPTION, true)
+ 
+-SCHED_FEAT(HRTICK, false)
++SCHED_FEAT(HRTICK, true)
+ SCHED_FEAT(HRTICK_DL, false)
+
