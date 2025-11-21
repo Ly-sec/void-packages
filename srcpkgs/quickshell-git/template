@@ -1,0 +1,22 @@
+# Template file for 'quickshell'
+pkgname=quickshell-git
+version=0.2.1
+revision=1
+_gitrev=ed036d514b0fdbce03158a0b331305be166f4555
+build_style=cmake
+configure_args="-DDISTRIBUTOR=Void -DDISTRIBUTOR_DEBUGINFO_AVAILABLE=YES
+ -DINSTALL_QML_PREFIX=lib/qt6/qml -DCRASH_REPORTER=OFF -DHYPRLAND=ON"
+hostmakedepends="pkg-config wayland-devel qt6-base qt6-declarative-devel
+ qt6-shadertools"
+makedepends="cli11 qt6-base-private-devel qt6-declarative-private-devel
+ qt6-shadertools-devel pipewire-devel jemalloc-devel
+ pam-devel polkit-devel"
+depends="qt6-svg"
+short_desc="Flexible QtQuick-based desktop shell toolkit"
+maintainer="classabbyamp <void@placeviolette.net>"
+license="LGPL-3.0-only"
+homepage="https://quickshell.org"
+changelog="https://quickshell.org/changelog/"
+distfiles="https://git.outfoxxed.me/quickshell/quickshell/archive/${_gitrev}.tar.gz"
+checksum=832140bb65c23e8306ac2c7c53671b0509d2052ef3335579d1c6f52b79c19645
+wrksrc="${pkgname}"
