@@ -1,14 +1,14 @@
 pkgname=noctalia-shell
-version=3.1.1
+version=3.4.0
 revision=1
 hostmakedepends=""
 maintainer="Ly-sec <itslysec@gmail.com>"
-depends="quickshell qt6-plugin-tls-openssl power-profiles-daemon font-inter brightnessctl ddcutil"
+depends="quickshell qt6-plugin-tls-openssl qt6-multimedia power-profiles-daemon font-inter brightnessctl ddcutil"
 short_desc="A sleek and minimal desktop shell thoughtfully crafted for Wayland, built with Quickshell."
 homepage="https://github.com/noctalia-dev/noctalia-shell"
 license="MIT"
 distfiles="https://github.com/noctalia-dev/noctalia-shell/archive/refs/tags/v${version}.tar.gz"
-checksum=cb765a20718c4ab39aba57446561683cff64976138a47311db45a10fb292968f
+checksum=0681b8b31ba1dc54e38507869bd35d0e88f2710afad4e8f1c2c3f502bf532fa0
 
 build() {
     return 0
